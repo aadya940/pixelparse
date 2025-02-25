@@ -1,0 +1,8 @@
+Flask
+transformers
+torch
+Pillow
+requests
+pandas
+gunicorn
+flask-cors
