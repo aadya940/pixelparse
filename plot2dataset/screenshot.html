@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Screenshot Capture</title>
+  <link rel="stylesheet" href="libs/cropper.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      font-size: 24px;
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .image-container {
+      margin: 20px 0;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+      max-height: 500px;
+    }
+    
+    img {
+      display: block;
+      max-width: 100%;
+    }
+    
+    .button-container {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+    
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    button:hover {
+      background-color: #3367d6;
+    }
+    
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #e8f0fe;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Crop Chart Image</h1>
+    <p>Select the area containing the chart data you want to extract.</p>
+    
+    <div class="image-container">
+      <img id="screenshot" src="" alt="Screenshot">
+    </div>
+    
+    <div class="button-container">
+      <button id="extractBtn">Extract Data</button>
+      <button id="cancelBtn">Cancel</button>
+    </div>
+    
+    <div id="status">Ready</div>
+  </div>
+  
+  <script src="libs/cropper.min.js"></script>
+  <script src="screenshot.js"></script>
+</body>
+</html> 

@@ -7,15 +7,32 @@ import requests
 from PIL import Image
 import io
 import os
+import base64
+import torch
+from torchao.quantization.quant_api import quantize_, Int8WeightOnlyConfig
+import multiprocessing
+
+torch.set_num_threads(multiprocessing.cpu_count())
 
 app = Flask(__name__)
 CORS(app)
 
+
 print("Loading Pix2Struct model...")
 processor = Pix2StructProcessor.from_pretrained("google/deplot")
 model = Pix2StructForConditionalGeneration.from_pretrained("google/deplot")
-print("Model loaded successfully")
 
+# JIT Compile model for faster inference
+model = torch.compile(model)
+
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.Linear):  # Only quantize Linear layers
+        quantize_(module, Int8WeightOnlyConfig())
+
+# Ensure model is on CPU
+model.to(torch.device("cpu"))
+
+print("Model loaded successfully")
 
 def parse_table_text(text):
     lines = text.strip().split("\n")
@@ -58,9 +75,14 @@ def extract_data():
         return jsonify({"success": False, "error": "No image URL provided"}), 400
 
     try:
-        print(f"Received request to extract data from: {data['imageUrl']}")
+        print(f"Received request to extract data from: {data['imageUrl'][:50]}...")
 
-        if data["imageUrl"].startswith("images/"):
+        # Check if it's a base64 image
+        if data["imageUrl"].startswith("data:image"):
+            # Extract the base64 data
+            image_data = data["imageUrl"].split(",")[1]
+            image = Image.open(io.BytesIO(base64.b64decode(image_data)))
+        elif data["imageUrl"].startswith("images/"):
             image_path = data["imageUrl"]
             if not os.path.exists(image_path):
                 return (
@@ -83,7 +105,9 @@ def extract_data():
             text="Generate underlying data table of the figure below:",
             return_tensors="pt",
         )
-        predictions = model.generate(**inputs, max_new_tokens=1024)
+        predictions = model.generate(**inputs, 
+            max_new_tokens=3000,   # Limits token count
+        )
 
         table_text = processor.decode(predictions[0], skip_special_tokens=True)
         print(f"Model output: {table_text[:100]}...")

@@ -37,7 +37,7 @@ async function extractDataFromImage(imageUrl) {
       console.log("API Response Data:", data);
 
       if (data.success) {
-          const csvContent = convertToCSV(data.rawText); // Use data.rawText
+          const csvContent = convertToCSV(data.rawText);
           console.log("CSV Content:", csvContent);
 
           downloadCSV(csvContent, 'chart_data.csv');
@@ -64,11 +64,10 @@ function convertToCSV(dataString) {
       return '';
   }
 
-  const lines = dataString.split('<0x0A>');
-  const headers = lines[0].split(' | ');
-  const rows = lines.slice(1).map(line => line.split(' | '));
+  const lines = dataString.split('\n');
+  const rows = lines.map(line => line.split('\t'));
 
-  let csv = headers.join(',') + '\n';
+  let csv = '';
   rows.forEach(row => {
       csv += row.map(cell => {
           if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
