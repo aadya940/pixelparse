@@ -1,36 +1,38 @@
 # app.py
+import platform
+if platform.system() == 'Windows':
+    # Set multiprocessing start method to 'spawn' on Windows
+    import multiprocessing
+    multiprocessing.set_start_method('spawn', force=True)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
+# from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
+from transformers import AutoProcessor, AutoModelForVision2Seq
 import requests
 from PIL import Image
 import io
 import os
 import base64
 import torch
-from torchao.quantization.quant_api import quantize_, Int8WeightOnlyConfig
-import multiprocessing
-
-torch.set_num_threads(multiprocessing.cpu_count())
 
 app = Flask(__name__)
 CORS(app)
 
+print("Loading Qwen model...")
+processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+model = AutoModelForVision2Seq.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
 
-print("Loading Pix2Struct model...")
-processor = Pix2StructProcessor.from_pretrained("google/deplot")
-model = Pix2StructForConditionalGeneration.from_pretrained("google/deplot")
+# Move model to CPU and ensure it's in eval mode
+model = model.to(torch.device("cpu"))
+model.eval()
 
-# JIT Compile model for faster inference
-model = torch.compile(model)
-
-for name, module in model.named_modules():
-    if isinstance(module, torch.nn.Linear):  # Only quantize Linear layers
-        quantize_(module, Int8WeightOnlyConfig())
-
-# Ensure model is on CPU
-model.to(torch.device("cpu"))
+# Only compile if not on Windows
+if platform.system() != 'Windows':
+    model = torch.compile(model)
+    print("Model compiled successfully using `torch.compile`.")
+else:
+    print("Skipping model compilation on Windows.")
 
 print("Model loaded successfully")
 
@@ -68,50 +70,37 @@ def extract_data():
     if request.method == "OPTIONS":
         return "", 200
 
-    data = request.json
-    print("Received data:", data)
-
-    if not data or "imageUrl" not in data:
-        return jsonify({"success": False, "error": "No image URL provided"}), 400
-
     try:
-        print(f"Received request to extract data from: {data['imageUrl'][:50]}...")
+        data = request.json
+        print("Received data:", data)
 
-        # Check if it's a base64 image
-        if data["imageUrl"].startswith("data:image"):
-            # Extract the base64 data
-            image_data = data["imageUrl"].split(",")[1]
-            image = Image.open(io.BytesIO(base64.b64decode(image_data)))
-        elif data["imageUrl"].startswith("images/"):
-            image_path = data["imageUrl"]
-            if not os.path.exists(image_path):
-                return (
-                    jsonify({"success": False, "error": "Local image not found"}),
-                    404,
-                )
-            image = Image.open(image_path)
-        else:
-            response = requests.get(data["imageUrl"], stream=True)
-            if not response.ok:
-                error_msg = (
-                    f"Failed to download image. Status code: {response.status_code}"
-                )
-                print(f"Image download error: {error_msg}")
-                return jsonify({"success": False, "error": error_msg}), 400
-            image = Image.open(io.BytesIO(response.content))
+        if not data or "imageUrl" not in data:
+            return jsonify({"success": False, "error": "No image URL provided"}), 400
 
-        inputs = processor(
-            images=image,
-            text="Generate underlying data table of the figure below:",
-            return_tensors="pt",
-        )
-        predictions = model.generate(**inputs, 
-            max_new_tokens=3000,   # Limits token count
-        )
+        # Process image
+        image = get_image_from_data(data)
+        
+        # Generate with explicit memory management
+        with torch.no_grad():
+            inputs = processor(
+                images=image,
+                text="Generate the underlying data table from the chart given below:",
+                return_tensors="pt",
+            )
+            
+            predictions = model.generate(**inputs, max_new_tokens=3000)
+            
+            # Clear GPU memory if using CUDA
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Process output
+            table_text = processor.decode(predictions[0], skip_special_tokens=True)
+            print(f"Full model output: {table_text}")
 
-        table_text = processor.decode(predictions[0], skip_special_tokens=True)
-        print(f"Model output: {table_text[:100]}...")
-        print(f"Full model output: {table_text}")
+            # Clear variables
+            del predictions
+            del inputs
 
         table_data = parse_table_text(table_text)
         print(f"Extracted {len(table_data)} data rows")
@@ -123,11 +112,25 @@ def extract_data():
 
     except Exception as e:
         import traceback
-
         traceback_str = traceback.format_exc()
         print(f"Error processing image: {str(e)}")
         print(traceback_str)
         return jsonify({"success": False, "error": str(e)}), 500
+
+# Helper function to get image from data
+def get_image_from_data(data):
+    if data["imageUrl"].startswith("data:image"):
+        image_data = data["imageUrl"].split(",")[1]
+        return Image.open(io.BytesIO(base64.b64decode(image_data)))
+    elif data["imageUrl"].startswith("images/"):
+        if not os.path.exists(data["imageUrl"]):
+            raise FileNotFoundError("Local image not found")
+        return Image.open(data["imageUrl"])
+    else:
+        response = requests.get(data["imageUrl"], stream=True)
+        if not response.ok:
+            raise ValueError(f"Failed to download image. Status code: {response.status_code}")
+        return Image.open(io.BytesIO(response.content))
 
 
 @app.route("/health", methods=["GET"])
@@ -137,4 +140,8 @@ def health_check():
 
 if __name__ == "__main__":
     print("Starting Flask server...")
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Use threaded=False on Windows
+    if platform.system() == 'Windows':
+        app.run(debug=False, host="0.0.0.0", port=5000, threaded=False)
+    else:
+        app.run(debug=True, host="0.0.0.0", port=5000)
