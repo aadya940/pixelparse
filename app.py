@@ -1,13 +1,6 @@
 # app.py
-import platform
-if platform.system() == 'Windows':
-    # Set multiprocessing start method to 'spawn' on Windows
-    import multiprocessing
-    multiprocessing.set_start_method('spawn', force=True)
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-# from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
 from transformers import AutoProcessor, AutoModelForVision2Seq
 import requests
 from PIL import Image
@@ -15,25 +8,22 @@ import io
 import os
 import base64
 import torch
+from torch.quantization import quantize_dynamic
 
 app = Flask(__name__)
 CORS(app)
 
-print("Loading Qwen model...")
-processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
-model = AutoModelForVision2Seq.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+print("Loading DePlot model...")
+processor = AutoProcessor.from_pretrained("google/deplot")
+model = AutoModelForVision2Seq.from_pretrained("google/deplot")
 
 # Move model to CPU and ensure it's in eval mode
 model = model.to(torch.device("cpu"))
 model.eval()
 
-# Only compile if not on Windows
-if platform.system() != 'Windows':
-    model = torch.compile(model)
-    print("Model compiled successfully using `torch.compile`.")
-else:
-    print("Skipping model compilation on Windows.")
-
+# Quantize the model
+model = quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+model = torch.compile(model)
 print("Model loaded successfully")
 
 def parse_table_text(text):
@@ -81,26 +71,27 @@ def extract_data():
         image = get_image_from_data(data)
         
         # Generate with explicit memory management
-        with torch.no_grad():
+        with torch.inference_mode():
             inputs = processor(
                 images=image,
-                text="Generate the underlying data table from the chart given below:",
+                text="""Extract the data table from this chart. 
+                Format it as a tab-separated table with headers and values. 
+                Be precise with numbers and maintain the exact structure:""",
                 return_tensors="pt",
             )
             
-            predictions = model.generate(**inputs, max_new_tokens=3000)
+            predictions = model.generate(
+                **inputs,
+                max_new_tokens=2000,
+                num_beams=3,
+                temperature=0.7,
+                top_p=0.8,
+                do_sample=False,
+                early_stopping=True
+            )
             
-            # Clear GPU memory if using CUDA
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            # Process output
             table_text = processor.decode(predictions[0], skip_special_tokens=True)
             print(f"Full model output: {table_text}")
-
-            # Clear variables
-            del predictions
-            del inputs
 
         table_data = parse_table_text(table_text)
         print(f"Extracted {len(table_data)} data rows")
@@ -140,8 +131,4 @@ def health_check():
 
 if __name__ == "__main__":
     print("Starting Flask server...")
-    # Use threaded=False on Windows
-    if platform.system() == 'Windows':
-        app.run(debug=False, host="0.0.0.0", port=5000, threaded=False)
-    else:
-        app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)
