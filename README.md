@@ -1,6 +1,6 @@
 ### PixelParse
 
-A Chrome Extension which converts Charts/Plots to Datasets.
+A Chrome Extension which converts Charts/Plots to CSV Datasets.
 
 ### Strengths
 
