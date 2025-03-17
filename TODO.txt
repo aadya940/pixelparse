@@ -1,5 +1,1 @@
-- Add actual hosted URL instead of localhost:8000
-- Implement a distributed Task Queue for Multiple Tasks.
-- Make this scalable.
-- Sort hosting, probably `PythonAnywhere` is a good option.
-- Implement 8 Bit Quantization.
+
