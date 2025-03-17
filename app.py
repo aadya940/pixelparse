@@ -23,8 +23,12 @@ model.eval()
 
 # Quantize the model
 model = quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-model = torch.compile(model)
+
+if not hasattr(model, "_torchdynamo_orig_callable"):
+    model = torch.compile(model)
+
 print("Model loaded successfully")
+
 
 def parse_table_text(text):
     lines = text.strip().split("\n")
@@ -69,7 +73,7 @@ def extract_data():
 
         # Process image
         image = get_image_from_data(data)
-        
+
         # Generate with explicit memory management
         with torch.inference_mode():
             inputs = processor(
@@ -77,7 +81,7 @@ def extract_data():
                 text="""Generate the underlying data table of the figure given below:""",
                 return_tensors="pt",
             )
-            
+
             predictions = model.generate(
                 **inputs,
                 max_new_tokens=2000,
@@ -85,9 +89,9 @@ def extract_data():
                 temperature=0.7,
                 top_p=0.8,
                 do_sample=False,
-                early_stopping=True
+                early_stopping=True,
             )
-            
+
             table_text = processor.decode(predictions[0], skip_special_tokens=True)
             print(f"Full model output: {table_text}")
 
@@ -101,10 +105,12 @@ def extract_data():
 
     except Exception as e:
         import traceback
+
         traceback_str = traceback.format_exc()
         print(f"Error processing image: {str(e)}")
         print(traceback_str)
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 # Helper function to get image from data
 def get_image_from_data(data):
@@ -118,7 +124,9 @@ def get_image_from_data(data):
     else:
         response = requests.get(data["imageUrl"], stream=True)
         if not response.ok:
-            raise ValueError(f"Failed to download image. Status code: {response.status_code}")
+            raise ValueError(
+                f"Failed to download image. Status code: {response.status_code}"
+            )
         return Image.open(io.BytesIO(response.content))
 
 
