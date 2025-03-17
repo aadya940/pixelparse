@@ -3,7 +3,7 @@
   "name": "Chart Data Extractor",
   "version": "1.0",
   "description": "Extract data from chart images and download as CSV",
-  "permissions": ["contextMenus", "activeTab", "storage", "scripting"],
+  "permissions": ["contextMenus", "activeTab", "storage", "scripting", "tabs", "windows", "downloads"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

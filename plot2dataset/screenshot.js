@@ -1,61 +1,139 @@
-// content.js
+let cropper = null;
+let screenshotData = null;
+const statusElement = document.getElementById('status');
+const screenshotImage = document.getElementById('screenshot');
+const extractButton = document.getElementById('extractBtn');
+const cancelButton = document.getElementById('cancelBtn');
 
-// Listen for messages from the background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (sendResponse) {
-      sendResponse({ status: "Content script is active" });
-  }
-
-  if (message.action === "extractData") {
-      extractDataFromImage(message.imageUrl);
-  }
-
-  return true;
+// Get the screenshot data from URL parameters
+window.addEventListener('DOMContentLoaded', function() {
+  // Get the screenshot data from local storage
+  chrome.storage.local.get(['screenshotData'], function(result) {
+    if (result.screenshotData) {
+      screenshotData = result.screenshotData;
+      screenshotImage.src = screenshotData;
+      
+      // Initialize cropper after image is loaded
+      screenshotImage.onload = function() {
+        initCropper();
+      };
+    } else {
+      statusElement.textContent = "Error: No screenshot data found";
+    }
+  });
 });
 
-// Function to extract data from image
-async function extractDataFromImage(imageUrl) {
-  try {
-      chrome.runtime.sendMessage({
-          action: "showStatus",
-          status: "Processing image..."
-      });
-
-      const response = await fetch('http://127.0.0.1:5000/extract-data', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ imageUrl })
-      });
-
-      if (!response.ok) {
-          throw new Error('Failed to extract data: API request failed');
-      }
-
-      const data = await response.json();
-      console.log("API Response Data:", data);
-
-      if (data.success) {
-          const csvContent = convertToCSV(data.rawText);
-          console.log("CSV Content:", csvContent);
-
-          downloadCSV(csvContent, 'chart_data.csv');
-
-          chrome.runtime.sendMessage({
-              action: "showStatus",
-              status: "Data extracted successfully!"
-          });
-      } else {
-          throw new Error(data.error || 'Failed to extract data: API returned error');
-      }
-  } catch (error) {
-      console.error('Error extracting data:', error);
-      chrome.runtime.sendMessage({
-          action: "showStatus",
-          status: "Error: " + error.message
-      });
+// Initialize the cropper
+function initCropper() {
+  if (cropper) {
+    cropper.destroy();
   }
+  
+  cropper = new Cropper(screenshotImage, {
+    aspectRatio: NaN, // Free aspect ratio
+    viewMode: 1,
+    dragMode: 'crop',
+    autoCropArea: 0.5,
+    restore: false,
+    guides: true,
+    center: true,
+    highlight: true,
+    cropBoxMovable: true,
+    cropBoxResizable: true,
+    toggleDragModeOnDblclick: false,
+    minCropBoxWidth: 50,
+    minCropBoxHeight: 50,
+    ready: function() {
+      statusElement.textContent = "Select area to extract data from";
+    }
+  });
+}
+
+// Extract data button click handler
+extractButton.addEventListener('click', function() {
+  if (!cropper) {
+    statusElement.textContent = "Error: No image selected";
+    return;
+  }
+  
+  statusElement.textContent = "Processing cropped image...";
+  
+  try {
+    // Get the cropped canvas
+    const canvas = cropper.getCroppedCanvas({
+      minWidth: 100,
+      minHeight: 100,
+      maxWidth: 4096,
+      maxHeight: 4096
+    });
+    
+    if (!canvas) {
+      statusElement.textContent = "Error: Could not crop image";
+      return;
+    }
+    
+    // Get the image data URL
+    const imageDataUrl = canvas.toDataURL('image/png');
+    
+    // Send directly to backend instead of using background script
+    sendCroppedImageToBackend(imageDataUrl);
+    
+  } catch (error) {
+    console.error('Error cropping image:', error);
+    statusElement.textContent = "Error cropping image: " + error.message;
+  }
+});
+
+// Cancel button click handler
+cancelButton.addEventListener('click', function() {
+  window.close();
+});
+
+// Function to send cropped image to backend
+function sendCroppedImageToBackend(imageDataUrl) {
+  statusElement.textContent = "Sending to server...";
+  
+  fetch('http://127.0.0.1:5000/extract-data', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ imageUrl: imageDataUrl })
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Failed to extract data: API request failed');
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      const csvContent = convertToCSV(data.rawText);
+      
+      // First download the CSV
+      downloadCSV(csvContent, 'chart_data.csv');
+      
+      // Update status
+      statusElement.textContent = "Data extracted successfully!";
+      
+      // Store success status in local storage for the popup to read
+      chrome.storage.local.set({ 
+        status: "Data extracted successfully!",
+        lastExtraction: new Date().toISOString()
+      });
+      
+      // Close the window after the download starts
+      setTimeout(() => {
+        window.close();
+      }, 1000);
+    } else {
+      throw new Error(data.error || 'Failed to extract data: API returned error');
+    }
+  })
+  .catch(error => {
+    console.error('Error extracting data:', error);
+    statusElement.textContent = "Error: " + error.message;
+  });
 }
 
 // Function to convert string data to CSV
@@ -222,19 +300,13 @@ function parseTableData(dataString) {
 function downloadCSV(csvContent, filename) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-
+  
   const link = document.createElement('a');
   link.setAttribute('href', url);
   link.setAttribute('download', filename);
   link.style.visibility = 'hidden';
-
+  
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-}
-
-// Signal that the content script is loaded
-chrome.runtime.sendMessage({
-  action: "showStatus",
-  status: "Content script loaded and ready"
-});
+} 

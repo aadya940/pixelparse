@@ -1,21 +1,30 @@
 # app.py
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
+from transformers import AutoProcessor, AutoModelForVision2Seq
 import requests
 from PIL import Image
 import io
 import os
+import base64
+import torch
+from torch.quantization import quantize_dynamic
 
 app = Flask(__name__)
 CORS(app)
 
-print("Loading Pix2Struct model...")
-processor = Pix2StructProcessor.from_pretrained("google/deplot")
-model = Pix2StructForConditionalGeneration.from_pretrained("google/deplot")
-print("Model loaded successfully")
+print("Loading DePlot model...")
+processor = AutoProcessor.from_pretrained("google/deplot")
+model = AutoModelForVision2Seq.from_pretrained("google/deplot")
 
+# Move model to CPU and ensure it's in eval mode
+model = model.to(torch.device("cpu"))
+model.eval()
+
+# Quantize the model
+model = quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+model = torch.compile(model)
+print("Model loaded successfully")
 
 def parse_table_text(text):
     lines = text.strip().split("\n")
@@ -51,43 +60,36 @@ def extract_data():
     if request.method == "OPTIONS":
         return "", 200
 
-    data = request.json
-    print("Received data:", data)
-
-    if not data or "imageUrl" not in data:
-        return jsonify({"success": False, "error": "No image URL provided"}), 400
-
     try:
-        print(f"Received request to extract data from: {data['imageUrl']}")
+        data = request.json
+        print("Received data:", data)
 
-        if data["imageUrl"].startswith("images/"):
-            image_path = data["imageUrl"]
-            if not os.path.exists(image_path):
-                return (
-                    jsonify({"success": False, "error": "Local image not found"}),
-                    404,
-                )
-            image = Image.open(image_path)
-        else:
-            response = requests.get(data["imageUrl"], stream=True)
-            if not response.ok:
-                error_msg = (
-                    f"Failed to download image. Status code: {response.status_code}"
-                )
-                print(f"Image download error: {error_msg}")
-                return jsonify({"success": False, "error": error_msg}), 400
-            image = Image.open(io.BytesIO(response.content))
+        if not data or "imageUrl" not in data:
+            return jsonify({"success": False, "error": "No image URL provided"}), 400
 
-        inputs = processor(
-            images=image,
-            text="Generate underlying data table of the figure below:",
-            return_tensors="pt",
-        )
-        predictions = model.generate(**inputs, max_new_tokens=1024)
-
-        table_text = processor.decode(predictions[0], skip_special_tokens=True)
-        print(f"Model output: {table_text[:100]}...")
-        print(f"Full model output: {table_text}")
+        # Process image
+        image = get_image_from_data(data)
+        
+        # Generate with explicit memory management
+        with torch.inference_mode():
+            inputs = processor(
+                images=image,
+                text="""Generate the underlying data table of the figure given below:""",
+                return_tensors="pt",
+            )
+            
+            predictions = model.generate(
+                **inputs,
+                max_new_tokens=2000,
+                num_beams=3,
+                temperature=0.7,
+                top_p=0.8,
+                do_sample=False,
+                early_stopping=True
+            )
+            
+            table_text = processor.decode(predictions[0], skip_special_tokens=True)
+            print(f"Full model output: {table_text}")
 
         table_data = parse_table_text(table_text)
         print(f"Extracted {len(table_data)} data rows")
@@ -99,11 +101,25 @@ def extract_data():
 
     except Exception as e:
         import traceback
-
         traceback_str = traceback.format_exc()
         print(f"Error processing image: {str(e)}")
         print(traceback_str)
         return jsonify({"success": False, "error": str(e)}), 500
+
+# Helper function to get image from data
+def get_image_from_data(data):
+    if data["imageUrl"].startswith("data:image"):
+        image_data = data["imageUrl"].split(",")[1]
+        return Image.open(io.BytesIO(base64.b64decode(image_data)))
+    elif data["imageUrl"].startswith("images/"):
+        if not os.path.exists(data["imageUrl"]):
+            raise FileNotFoundError("Local image not found")
+        return Image.open(data["imageUrl"])
+    else:
+        response = requests.get(data["imageUrl"], stream=True)
+        if not response.ok:
+            raise ValueError(f"Failed to download image. Status code: {response.status_code}")
+        return Image.open(io.BytesIO(response.content))
 
 
 @app.route("/health", methods=["GET"])

@@ -1,8 +1,9 @@
 Flask
 transformers
-torch
+torch --extra-index-url https://download.pytorch.org/whl/cpu
 Pillow
 requests
 pandas
 gunicorn
 flask-cors
+torchao

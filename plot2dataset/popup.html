@@ -3,6 +3,9 @@
   <head>
     <title>Chart Data Extractor</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="libs/cropper.min.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
   </head>
   <body>
     <div class="container">
@@ -11,11 +14,24 @@
         Right-click on any chart image and select "Extract Chart Data" to
         extract the data and download as CSV.
       </p>
+      <div class="button-container">
+        <button id="captureBtn">Capture Screenshot</button>
+        <button id="settingsBtn" class="icon-button">
+          <i class="fa fa-gear"></i>
+        </button>
+      </div>
       <div class="status-container">
         <p>Status: <span id="status">Ready</span></p>
       </div>
-      <button id="settingsBtn">Settings</button>
+      <div id="screenshotContainer" class="screenshot-container hidden">
+        <img id="screenshotImage" src="" alt="Screenshot" />
+        <div class="screenshot-actions">
+          <button id="confirmCropBtn">Extract Data</button>
+          <button id="cancelCropBtn">Cancel</button>
+        </div>
+      </div>
     </div>
+    <script src="libs/cropper.min.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
