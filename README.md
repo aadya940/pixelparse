@@ -72,10 +72,6 @@ google's deplot model to implement this functionality.
   - Limited ability to distinguish between data series based on color
   - Charts that rely heavily on color coding may not be parsed correctly
 
-- **Local Server Requirement**:
-  - Requires a local Python server running the DePlot model
-  - Not a standalone extension (requires backend processing)
-
 ## Technical Details
 
 PixelParse uses Google's DePlot model to convert chart images into structured data. 
