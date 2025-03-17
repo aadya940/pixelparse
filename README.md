@@ -4,6 +4,7 @@ PixelParse is a Chrome extension that automatically extracts summary data from
 chart images and converts them into structured CSV datasets. It leverages
 google's deplot model to implement this functionality. 
 
+
 ## Installation
 
 1. Clone this repository or download the source code
