@@ -32,15 +32,6 @@ google's deplot model to implement this functionality.
 5. Click "Extract Data"
 6. The extension will process the selected area and download a CSV file with the extracted data
 
-## Requirements
-
-- The backend server must be running locally on port 5000
-- To start the backend server:
-  ```
-  cd pixelparse
-  python app.py
-  ```
-
 ## Strengths
 
 - **Lightweight**
