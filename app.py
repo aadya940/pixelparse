@@ -74,9 +74,7 @@ def extract_data():
         with torch.inference_mode():
             inputs = processor(
                 images=image,
-                text="""Extract the data table from this chart. 
-                Format it as a tab-separated table with headers and values. 
-                Be precise with numbers and maintain the exact structure:""",
+                text="""Generate the underlying data table of the figure given below:""",
                 return_tensors="pt",
             )
             
