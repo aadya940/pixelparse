@@ -77,3 +77,15 @@ google's deplot model to implement this functionality.
 PixelParse uses Google's DePlot model to convert chart images into structured data. 
 The extension handles the user interface and image capture, while the Python backend 
 processes the images using the AI model.
+
+
+```
+@misc{liu2022deplot,
+      title={DePlot: One-shot visual language reasoning by plot-to-table translation},
+      author={Liu, Fangyu and Eisenschlos, Julian Martin and Piccinno, Francesco and Krichene, Syrine and Pang, Chenxi and Lee, Kenton and Joshi, Mandar and Chen, Wenhu and Collier, Nigel and Altun, Yasemin},
+      year={2022},
+      eprint={2212.10505},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
